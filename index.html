@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Syndigo Model Generator</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 15px; color: #1a1a1a; background: #f5f5f3; min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 48px 16px; }
+  .card { background: #fff; border-radius: 12px; border: 1px solid #e0e0dd; padding: 40px; width: 100%; max-width: 640px; }
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+  .subtitle { color: #666; font-size: 14px; margin-bottom: 32px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #444; }
+  input[type="text"] { width: 100%; padding: 9px 12px; border: 1px solid #d0d0cc; border-radius: 6px; font-size: 14px; margin-bottom: 20px; outline: none; }
+  input[type="text"]:focus { border-color: #4a7cf6; box-shadow: 0 0 0 3px rgba(74,124,246,0.12); }
+  .dropzone { border: 2px dashed #ccc; border-radius: 8px; padding: 36px 24px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; margin-bottom: 20px; }
+  .dropzone:hover, .dropzone.drag-over { border-color: #4a7cf6; background: #f0f4ff; }
+  .dropzone-icon { font-size: 32px; margin-bottom: 10px; }
+  .dropzone p { font-size: 14px; color: #555; }
+  .dropzone span { color: #4a7cf6; font-weight: 500; }
+  input[type="file"] { display: none; }
+  .summary { background: #f0f7f0; border: 1px solid #c3e0c3; border-radius: 6px; padding: 12px 16px; font-size: 13px; line-height: 1.8; margin-bottom: 20px; display: none; }
+  .pill { display: inline-block; background: #e0eedf; color: #2d6b2d; border-radius: 99px; padding: 1px 10px; font-size: 12px; margin-right: 4px; }
+  .status { padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; display: none; }
+  .status.info { background: #eef3ff; color: #2952c7; border: 1px solid #c0d0f8; }
+  .status.success { background: #edfaed; color: #1d6b1d; border: 1px solid #b3e0b3; }
+  .status.error { background: #fff0f0; color: #b33030; border: 1px solid #f0b3b3; }
+  button { width: 100%; padding: 11px; background: #2952c7; color: #fff; border: none; border-radius: 7px; font-size: 15px; font-weight: 600; cursor: pointer; transition: background .15s; }
+  button:hover:not(:disabled) { background: #1e3ea0; }
+  button:disabled { background: #aab8d8; cursor: not-allowed; }
+  .note { font-size: 12px; color: #888; margin-top: 20px; line-height: 1.6; border-top: 1px solid #eee; padding-top: 16px; }
+  .note strong { color: #555; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Syndigo Model Generator</h1>
+  <p class="subtitle">Upload a Data Dictionary to generate all Syndigo DMD import files.</p>
+
+  <label for="tenantInput">Syndigo Tenant Name</label>
+  <input type="text" id="tenantInput" placeholder="e.g. acmeds01">
+
+  <label for="taxNameInput">Taxonomy Short Name</label>
+  <input type="text" id="taxNameInput" placeholder="e.g. acmeMerchandiseHierarchy">
+
+  <label for="taxDisplayInput">Taxonomy Display Name</label>
+  <input type="text" id="taxDisplayInput" placeholder="e.g. Acme Merchandise Hierarchy">
+
+  <label>Data Dictionary File</label>
+  <div class="dropzone" id="dropzone">
+    <div class="dropzone-icon">📂</div>
+    <p>Drag and drop your <strong>Data Dictionary (.xlsx)</strong> here, or <span>click to browse</span></p>
+  </div>
+  <input type="file" id="fileInput" accept=".xlsx,.xlsm">
+
+  <div class="summary" id="summary"></div>
+  <div class="status" id="status"></div>
+
+  <button id="generateBtn" disabled>Generate Syndigo Files</button>
+
+  <div class="note">
+    <strong>Generated files:</strong> 010-base-model-thing.xlsx &nbsp;·&nbsp; 040-base-model-reference-data.xlsx &nbsp;·&nbsp;
+    060-taxonomy-model.xlsx &nbsp;·&nbsp; 080-reference-data.xlsm &nbsp;·&nbsp; 100-reference-data-relationship.xlsm<br><br>
+    <strong>Note on 100 file:</strong> The "Related to ID" column uses L4 node codes as placeholders. After importing the taxonomy into Syndigo, replace these with the actual internal entity GUIDs.
+    All processing happens in your browser — no data is uploaded anywhere.
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/parser.js"></script>
+<script src="js/generators/thing-model.js"></script>
+<script src="js/generators/ref-model.js"></script>
+<script src="js/generators/taxonomy-model.js"></script>
+<script src="js/generators/ref-data.js"></script>
+<script src="js/generators/ref-relationships.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
