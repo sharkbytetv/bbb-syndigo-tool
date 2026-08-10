@@ -111,7 +111,8 @@ function parseCategorySpecificAttrs(wb, attrs) {
     const l4NodeId = String(r[4]).trim();
     const l4Name = r[5] ? String(r[5]).trim() : '';
     const attrDisplayName = String(r[6]).trim();
-    const kvaOrVa = r[7] ? String(r[7]).trim() : 'VA';
+    const kvaOrVa = r[7] ? String(r[7]).trim() : null;
+    if (!kvaOrVa) continue;
     const lovValuesRaw = r[8] ? String(r[8]).trim() : null;
     const refTable = r[9] && String(r[9]).trim() !== '—' ? String(r[9]).trim() : null;
 
