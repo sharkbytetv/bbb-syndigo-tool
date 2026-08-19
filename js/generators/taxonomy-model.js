@@ -1,12 +1,12 @@
 async function generateTaxonomyModel(data, tenant) {
-  const wb = await loadTemplate('templates/tax-template.xlsx');
+  const zip = await loadTemplate('templates/tax-template.xlsx');
 
-  updateMetadata(wb, tenant, 'taxonomyModel');
-  fillSheet(wb, 'TAXONOMIES',    buildTaxonomies(data.taxonomy));
-  fillSheet(wb, 'CATEGORIES',    buildCategories(data.taxonomy));
-  fillSheet(wb, 'CATEGORY MODEL', buildCategoryModel(data));
+  await updateMetadata(zip, tenant, 'taxonomyModel');
+  await fillSheet(zip, 'TAXONOMIES',    buildTaxonomies(data.taxonomy));
+  await fillSheet(zip, 'CATEGORIES',    buildCategories(data.taxonomy));
+  await fillSheet(zip, 'CATEGORY MODEL', []);  // clear template placeholder rows; not populated
 
-  return wb;
+  return zip.generateAsync({ type: 'uint8array' });
 }
 
 function buildTaxonomies(taxonomy) {
@@ -45,7 +45,7 @@ function buildCategoryModel(data) {
 
   for (const ca of data.categoryAttrs) {
     if (!ca.attrFieldId) continue;
-    const key = `${ca.l4NodeId}|${ca.attrFieldId}`;
+    const key = ca.l4NodeId + '|' + ca.attrFieldId;
     if (seen.has(key)) continue;
     seen.add(key);
 

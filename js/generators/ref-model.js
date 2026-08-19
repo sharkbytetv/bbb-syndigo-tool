@@ -1,14 +1,14 @@
 async function generateRefModel(data, tenant) {
-  const wb = await loadTemplate('templates/ref-template.xlsx');
+  const zip = await loadTemplate('templates/ref-template.xlsx');
   const refTablesWithCSA = getRefTablesWithCSA(data);
 
-  updateMetadata(wb, tenant, 'referenceData');
-  fillSheet(wb, 'ENTITIES',      buildRefEntities(data.refTables));
-  fillSheet(wb, 'ATTRIBUTES',    buildRefAttributes(data.refTables));
-  fillSheet(wb, 'RELATIONSHIPS', buildRefRelationships(refTablesWithCSA));
-  fillSheet(wb, 'E-A-R MODEL',   buildRefEAR(data.refTables, refTablesWithCSA));
+  await updateMetadata(zip, tenant, 'referenceData');
+  await fillSheet(zip, 'ENTITIES',      buildRefEntities(data.refTables));
+  await fillSheet(zip, 'ATTRIBUTES',    buildRefAttributes(data.refTables));
+  await fillSheet(zip, 'RELATIONSHIPS', buildRefRelationships(refTablesWithCSA));
+  await fillSheet(zip, 'E-A-R MODEL',   buildRefEAR(data.refTables, refTablesWithCSA));
 
-  return wb;
+  return zip.generateAsync({ type: 'uint8array' });
 }
 
 function getRefTablesWithCSA(data) {
@@ -18,12 +18,10 @@ function getRefTablesWithCSA(data) {
 }
 
 function buildRefEntities(refTables) {
-  // 7 cols: ACTION, NAME, DISPLAY NAME, ICON, MERGE SEQUENCE, HELP TEXT, BASE UNIT SYMBOL
   return refTables.map(rt => [null, rt.name, rt.displayName, null, null, null, null]);
 }
 
 function buildRefAttributes(refTables) {
-  // 59 cols — same template as thing domain
   const rows = [];
   let seq = 10;
   for (const rt of refTables) {
@@ -49,9 +47,6 @@ function buildRefAttributes(refTables) {
 }
 
 function buildRefRelationships(refTablesWithCSA) {
-  // 13 cols: ACTION, NAME, DOMAIN, RELATIONSHIP TYPE, DISPLAY NAME, DISPLAY NAME WHEREUSED,
-  //          DISPLAY SEQUENCE, RELATED ENTITY SEARCH, HELP TEXT, MIN OCCURRENCE, MAX OCCURRENCE,
-  //          IGNORE MERGE?, MERGE SEQUENCE
   const rows = [];
   for (const refName of refTablesWithCSA) {
     const row = new Array(13).fill(null);
@@ -66,19 +61,16 @@ function buildRefRelationships(refTablesWithCSA) {
 }
 
 function buildRefEAR(refTables, refTablesWithCSA) {
-  // 50 cols — same template as thing domain
   const rows = [];
   for (const rt of refTables) {
-    // Code attribute row — entity identifier
     const attrRow = new Array(50).fill(null);
     attrRow[1]  = rt.name;
     attrRow[3]  = rt.name + 'Code';
-    attrRow[8]  = 'Yes';   // IS ENTITY IDENTIFIER?
+    attrRow[8]  = 'Yes';
     attrRow[9]  = 'No';
     attrRow[13] = 'No';
     rows.push(attrRow);
 
-    // Relationship row → taxonomy category (if in CSA)
     if (refTablesWithCSA.has(rt.name)) {
       const relRow = new Array(50).fill(null);
       relRow[1] = rt.name;

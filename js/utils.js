@@ -49,46 +49,139 @@ function buildAOASheet(wb, sheetName, rows) {
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
 }
 
+// ─── JSZip helpers ────────────────────────────────────────────────────────────
+
+function _escXml(v) {
+  return String(v)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// 0-based column index → Excel column letter (A, B, …, Z, AA, …)
+function _colLetter(n) {
+  let s = '';
+  n++;
+  while (n > 0) {
+    s = String.fromCharCode(64 + ((n - 1) % 26) + 1) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
+// Resolve a sheet name to its path inside the ZIP (e.g. "xl/worksheets/sheet1.xml")
+async function _findSheetPath(zip, sheetName) {
+  const wbXml   = await zip.file('xl/workbook.xml').async('string');
+  const relsXml = await zip.file('xl/_rels/workbook.xml.rels').async('string');
+  const esc = sheetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const sm  = new RegExp('name="' + esc + '"[^>]*r:id="([^"]+)"').exec(wbXml)
+           || new RegExp('r:id="([^"]+)"[^>]*name="' + esc + '"').exec(wbXml);
+  if (!sm) throw new Error('Sheet not found in workbook: ' + sheetName);
+  const rm = new RegExp('Id="' + sm[1] + '"[^>]*Target="([^"]+)"').exec(relsXml);
+  if (!rm) throw new Error('Relationship not found for sheet: ' + sheetName);
+  const target = rm[1];
+  return target.startsWith('xl/') ? target : 'xl/' + target;
+}
+
+// Fetch a template file and return a JSZip object — all OOXML content preserved as-is.
 async function loadTemplate(path) {
   const resp = await fetch(path);
-  if (!resp.ok) throw new Error(`Failed to load template: ${path} (${resp.status})`);
+  if (!resp.ok) throw new Error('Failed to load template: ' + path + ' (' + resp.status + ')');
   const buf = await resp.arrayBuffer();
-  const wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
-  for (const name of wb.SheetNames) {
-    delete wb.Sheets[name]['!dataValidation'];
-    delete wb.Sheets[name]['!dvs'];
+  return JSZip.loadAsync(buf);
+}
+
+// Replace the <sheetData> of `sheetName` with new rows, preserving styled header rows.
+// headerCount: how many header rows to keep from the template (default 1).
+// dataRows: array of arrays; null/undefined cells are omitted; numbers written as <v>; all else as inlineStr.
+async function fillSheet(zip, sheetName, dataRows, headerCount = 1) {
+  const sheetPath = await _findSheetPath(zip, sheetName);
+  let xml = await zip.file(sheetPath).async('string');
+
+  // Extract the first N header rows from existing sheetData
+  const sdMatch    = /<sheetData\b[^>]*>([\s\S]*?)<\/sheetData>/.exec(xml);
+  const existingSd = sdMatch ? sdMatch[1] : '';
+  let headersXml = '';
+  for (let n = 1; n <= headerCount; n++) {
+    const m = new RegExp('<row\\b[^>]*\\br="' + n + '"[^>]*>[\\s\\S]*?<\\/row>').exec(existingSd);
+    if (m) headersXml += m[0];
   }
-  return wb;
+
+  // Build new data rows (starting at headerCount+1) as inline strings / bare numbers
+  let newRowsXml = '';
+  for (let i = 0; i < dataRows.length; i++) {
+    const rowNum = i + headerCount + 1;
+    const row = dataRows[i];
+    let cellsXml = '';
+    for (let c = 0; c < row.length; c++) {
+      const v = row[c];
+      if (v === null || v === undefined) continue;
+      const ref = _colLetter(c) + rowNum;
+      if (typeof v === 'number') {
+        cellsXml += '<c r="' + ref + '"><v>' + v + '</v></c>';
+      } else {
+        cellsXml += '<c r="' + ref + '" t="inlineStr"><is><t>' + _escXml(String(v)) + '</t></is></c>';
+      }
+    }
+    if (cellsXml) newRowsXml += '<row r="' + rowNum + '">' + cellsXml + '</row>';
+  }
+
+  // Use a function so any $ in headersXml/newRowsXml is treated literally
+  const newSd = '<sheetData>' + headersXml + newRowsXml + '</sheetData>';
+  xml = xml.replace(/<sheetData\b[^>]*>[\s\S]*?<\/sheetData>/, () => newSd);
+
+  zip.file(sheetPath, xml);
 }
 
-// Appends dataRows after the existing header row in the named sheet.
-// Preserves the header, hidden sheets, formatting, and dropdown lists from the template.
-function fillSheet(wb, sheetName, dataRows) {
-  if (!wb.Sheets[sheetName]) return;
-  const ws = wb.Sheets[sheetName];
-  if (dataRows.length === 0) return;
-  XLSX.utils.sheet_add_aoa(ws, dataRows, { origin: { r: 1, c: 0 } });
-  // Extend the sheet's declared range to cover the new rows
-  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
-  const lastRow = dataRows.length; // 0-indexed row 1 = Excel row 2, so last = dataRows.length
-  const lastCol = Math.max(range.e.c, Math.max(...dataRows.map(r => r.length - 1)));
-  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: lastRow, c: lastCol } });
-}
+// Update TENANT and DOMAIN cells in the METADATA sheet via shared-string lookup.
+async function updateMetadata(zip, tenant, domain) {
+  const sheetPath = await _findSheetPath(zip, 'METADATA');
 
-// Updates TENANT and DOMAIN in METADATA by searching column A for the label.
-function updateMetadata(wb, tenant, domain) {
-  const ws = wb.Sheets['METADATA'];
-  if (!ws) return;
-  const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
-  aoa.forEach((row, ri) => {
-    const label = row[0] ? String(row[0]).trim() : '';
-    if (label === 'TENANT') {
-      const addr = XLSX.utils.encode_cell({ r: ri, c: 1 });
-      ws[addr] = { v: tenant, t: 's' };
-    }
-    if (label === 'DOMAIN') {
-      const addr = XLSX.utils.encode_cell({ r: ri, c: 1 });
-      ws[addr] = { v: domain, t: 's' };
-    }
-  });
+  const ssFile = zip.file('xl/sharedStrings.xml');
+  if (!ssFile) return;
+  const ssXml = await ssFile.async('string');
+
+  const ssArr = [];
+  const siRe = /<si\b[^>]*>([\s\S]*?)<\/si>/g;
+  let siM;
+  while ((siM = siRe.exec(ssXml)) !== null) {
+    const texts = [];
+    const tRe = /<t\b[^>]*>([^<]*)<\/t>/g;
+    let tM;
+    while ((tM = tRe.exec(siM[1])) !== null) texts.push(tM[1]);
+    ssArr.push(texts.join(''));
+  }
+
+  let xml = await zip.file(sheetPath).async('string');
+
+  for (const [label, value] of [['TENANT', tenant], ['DOMAIN', domain]]) {
+    const idx = ssArr.indexOf(label);
+    if (idx < 0) continue;
+
+    xml = xml.replace(/<row\b([^>]*)>([\s\S]*?)<\/row>/g, (fullRow, attrs, content) => {
+      if (!new RegExp('<c r="A\\d+"[^>]*t="s"[^>]*><v>' + idx + '<\\/v><\\/c>').test(content)) {
+        return fullRow;
+      }
+      const rnM = attrs.match(/\br="(\d+)"/);
+      if (!rnM) return fullRow;
+      const rowNum = rnM[1];
+
+      const existingBM = new RegExp('<c r="B' + rowNum + '"([^>]*)>[\\s\\S]*?<\\/c>').exec(content);
+      let sAttr = '';
+      if (existingBM) {
+        const sM = existingBM[1].match(/s="(\d+)"/);
+        if (sM) sAttr = ' s="' + sM[1] + '"';
+      }
+
+      const newBCell = '<c r="B' + rowNum + '"' + sAttr + ' t="inlineStr"><is><t>' + _escXml(value) + '</t></is></c>';
+      const newContent = existingBM
+        ? content.replace(existingBM[0], () => newBCell)
+        : content + newBCell;
+
+      return '<row' + attrs + '>' + newContent + '</row>';
+    });
+  }
+
+  zip.file(sheetPath, xml);
 }

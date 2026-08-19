@@ -1,17 +1,17 @@
 async function generateThingModel(data, tenant) {
-  const wb = await loadTemplate('templates/thing-template.xlsx');
+  const zip = await loadTemplate('templates/thing-template.xlsx');
 
-  updateMetadata(wb, tenant, 'thing');
+  await updateMetadata(zip, tenant, 'thing');
+  await fillSheet(zip, 'ENTITIES',     buildThingEntities());
+  await fillSheet(zip, 'ATTRIBUTES',   buildThingAttributes(data));
+  await fillSheet(zip, 'RELATIONSHIPS', buildThingRelationships());
+  await fillSheet(zip, 'E-A-R MODEL',  buildThingEAR(data));
 
-  fillSheet(wb, 'ENTITIES', buildThingEntities());
-  fillSheet(wb, 'ATTRIBUTES', buildThingAttributes(data));
-  fillSheet(wb, 'RELATIONSHIPS', buildThingRelationships());
-  fillSheet(wb, 'E-A-R MODEL', buildThingEAR(data));
-
-  return wb;
+  return zip.generateAsync({ type: 'uint8array' });
 }
 
 function buildThingEntities() {
+  // Template header: ACTION, NAME, DISPLAY NAME, ICON, MERGE SEQUENCE, HELP TEXT, BASE UNIT SYMBOL
   return [
     [null, 'product', 'Product', null, null, null, null],
     [null, 'sku',     'SKU',     null, null, null, null],
@@ -55,9 +55,7 @@ function buildThingAttributes(data) {
     row[46] = a.precision ?? null;
     row[47] = a.minPrecision ?? null;
     row[48] = a.maxPrecision ?? null;
-    if (a.dependentAttribute) {
-      row[49] = a.dependentAttribute;
-    }
+    if (a.dependentAttribute) row[49] = a.dependentAttribute;
     rows.push(row);
     seq += 10;
   }

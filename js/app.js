@@ -10,6 +10,17 @@ document.addEventListener('DOMContentLoaded', () => {
   const statusEl = document.getElementById('status');
   const summaryEl = document.getElementById('summary');
 
+  // Restore cached values
+  ['tenantInput', 'taxNameInput', 'taxDisplayInput'].forEach(id => {
+    const saved = localStorage.getItem('syndigo_' + id);
+    if (saved) document.getElementById(id).value = saved;
+  });
+
+  // Save on change
+  [tenantInput, taxNameInput, taxDisplayInput].forEach(el => {
+    el.addEventListener('input', () => localStorage.setItem('syndigo_' + el.id, el.value));
+  });
+
   dropzone.addEventListener('click', () => fileInput.click());
   dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
   dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
@@ -75,35 +86,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
       setStatus('Generating 010 — base model (thing)…', 'info');
       await tick();
-      const thingWb = await generateThingModel(data, tenant);
-      zip.file('010-base-model-thing.xlsx', XLSX.write(thingWb, { bookType: 'xlsx', type: 'array' }));
+      const thingBuf = await generateThingModel(data, tenant);
+      zip.file('010-base-model-thing.xlsx', thingBuf);
 
       setStatus('Generating 040 — base model (reference data)…', 'info');
       await tick();
-      const refWb = await generateRefModel(data, tenant);
-      zip.file('040-base-model-reference-data.xlsx', XLSX.write(refWb, { bookType: 'xlsx', type: 'array' }));
+      const refModelBuf = await generateRefModel(data, tenant);
+      zip.file('040-base-model-reference-data.xlsx', refModelBuf);
 
       setStatus('Generating 060 — taxonomy model…', 'info');
       await tick();
-      const taxWb = await generateTaxonomyModel(data, tenant);
-      zip.file('060-taxonomy-model.xlsx', XLSX.write(taxWb, { bookType: 'xlsx', type: 'array' }));
+      const taxBuf = await generateTaxonomyModel(data, tenant);
+      zip.file('060-taxonomy-model.xlsx', taxBuf);
 
-      setStatus('Generating 080 — reference data values…', 'info');
+      setStatus('Generating 080 — reference data files (one per table)…', 'info');
       await tick();
-      const { wb: refDataWb, entityIds } = generateRefData(data);
-      zip.file('080-reference-data.xlsm', XLSX.write(refDataWb, { bookType: 'xlsm', type: 'array' }));
-
-      setStatus('Generating 100 — reference data relationships…', 'info');
-      await tick();
-      const relWb = generateRefRelationships(data, entityIds);
-      zip.file('100-reference-data-relationship.xlsm', XLSX.write(relWb, { bookType: 'xlsm', type: 'array' }));
+      const { files: refFiles, warnings: refWarnings } = await generateRefDataFiles(data);
+      for (const { displayName, buf: refBuf } of refFiles) {
+        const safeName = displayName.replace(/[\/\\:*?"<>|]/g, '').trim();
+        zip.file('080-' + safeName + '.xlsm', refBuf);
+      }
+      refWarnings.forEach(w => console.warn('[ref-data]', w));
 
       setStatus('Packaging zip…', 'info');
       await tick();
       const blob = await zip.generateAsync({ type: 'blob' });
       saveAs(blob, `syndigo-model-${tenant}-${today()}.zip`);
 
-      setStatus('Done! Your files have been downloaded.', 'success');
+      var doneMsg = 'Done! Generated ' + refFiles.length + ' reference table file(s).';
+      if (refWarnings.length) doneMsg += ' ' + refWarnings.length + ' blank LOV warning(s) — see browser console.';
+      setStatus(doneMsg, 'success');
     } catch (err) {
       setStatus('Generation error: ' + err.message, 'error');
       console.error(err);
@@ -114,4 +126,4 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function tick() { return new Promise(r => setTimeout(r, 20)); }
-function today() { return new Date().toISOString().slice(0, 10); }
+function today() { return new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, ''); }
