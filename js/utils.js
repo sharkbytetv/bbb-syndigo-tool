@@ -70,6 +70,39 @@ function _colLetter(n) {
   return s;
 }
 
+// Excel column letter → 0-based column index (inverse of _colLetter)
+function _colIndex(s) {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) n = n * 26 + (s.charCodeAt(i) - 64);
+  return n - 1;
+}
+
+// Rewrite <dimension> to span exactly the cells present in the new sheetData.
+// Syndigo templates ship a fixed dimension (e.g. "B3:H703"); leaving it in place
+// caps how many rows can be written before Excel reports "We found a problem"
+// and repairs the file. Recomputing it removes that ceiling.
+function _updateDimension(xml, sheetDataXml) {
+  let minC = Infinity, maxC = -1, minR = Infinity, maxR = -1;
+  for (const m of sheetDataXml.matchAll(/<c r="([A-Z]+)(\d+)"/g)) {
+    const c = _colIndex(m[1]);
+    const r = Number(m[2]);
+    if (c < minC) minC = c;
+    if (c > maxC) maxC = c;
+    if (r < minR) minR = r;
+    if (r > maxR) maxR = r;
+  }
+  if (maxR < 0) return xml;  // no cells written; leave the template's dimension alone
+
+  const tag = '<dimension ref="' + _colLetter(minC) + minR + ':' + _colLetter(maxC) + maxR + '"/>';
+  if (/<dimension\b[^>]*\/>/.test(xml)) {
+    return xml.replace(/<dimension\b[^>]*\/>/, () => tag);
+  }
+  if (/<dimension\b[^>]*>[\s\S]*?<\/dimension>/.test(xml)) {
+    return xml.replace(/<dimension\b[^>]*>[\s\S]*?<\/dimension>/, () => tag);
+  }
+  return xml;  // no dimension element — Excel computes it on open
+}
+
 // Resolve a sheet name to its path inside the ZIP (e.g. "xl/worksheets/sheet1.xml")
 async function _findSheetPath(zip, sheetName) {
   const wbXml   = await zip.file('xl/workbook.xml').async('string');
@@ -130,6 +163,7 @@ async function fillSheet(zip, sheetName, dataRows, headerCount = 1) {
   // Use a function so any $ in headersXml/newRowsXml is treated literally
   const newSd = '<sheetData>' + headersXml + newRowsXml + '</sheetData>';
   xml = xml.replace(/<sheetData\b[^>]*>[\s\S]*?<\/sheetData>/, () => newSd);
+  xml = _updateDimension(xml, newSd);
 
   zip.file(sheetPath, xml);
 }
