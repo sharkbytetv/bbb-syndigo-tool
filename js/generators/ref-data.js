@@ -36,7 +36,8 @@ async function generateRefDataFiles(data) {
     for (const v of rt.values) {
       const key = v.value.toLowerCase();
       valueToSeq[key] = seq;
-      entityRows.push(['', rt.name, seq, v.value, v.code ?? '']);
+      // col K ("Value") mirrors the display name, as in the Syndigo export
+      entityRows.push(['', rt.name, seq, v.value, v.code ?? '', null, null, null, null, null, v.value]);
       seq++;
     }
 
@@ -55,9 +56,15 @@ async function generateRefDataFiles(data) {
       }
     }
 
-    // Template has 2 header rows (section header + column headers); data starts at row 3
-    await fillSheet(zip, 'Entities',      entityRows, 2);
-    await fillSheet(zip, 'Relationships', relRows,    2);
+    // Reference Data has a single header row (Type, ENTITY_NAME); the template
+    // ships hardcoded refsizemaster rows, so rewrite it for this table.
+    const refDataRows = [[relType, rt.name]];
+
+    // Entities/Relationships have 2 header rows (section header + column headers);
+    // their data starts at row 3.
+    await fillSheet(zip, 'Entities',       entityRows,  2);
+    await fillSheet(zip, 'Relationships',  relRows,     2);
+    await fillSheet(zip, 'Reference Data', refDataRows, 1);
 
     const buf = await zip.generateAsync({ type: 'uint8array' });
     results.push({ name: rt.name, displayName: rt.displayName, buf });
