@@ -28,7 +28,7 @@ async function generateRefDataFiles(data) {
 
   for (const rt of data.refTables) {
     const zip = await loadTemplate('templates/ref-data-template.xlsm');
-    const relType = rt.name + '@@Belongs to L4 Hierarchy Node';
+    const relType = rt.name + '@@Belongs to Product Type';
 
     const entityRows = [];
     const valueToSeq = {};
@@ -50,8 +50,8 @@ async function generateRefDataFiles(data) {
         const dedupKey = id + '|' + l4Code;
         if (seen.has(dedupKey)) continue;
         seen.add(dedupKey);
-        // "Related to ID" (col E) left null — Syndigo populates it from the Identifier
-        relRows.push(['', relType, id, v.value, null, 'classification', '', l4Code]);
+        // "Related to ID" (col E) left null — Syndigo populates it from the Code
+        relRows.push(['', relType, id, v.value, null, 'refproducttype', l4Code]);
       }
     }
 
