@@ -99,19 +99,23 @@ document.addEventListener('DOMContentLoaded', () => {
   function showDeltaSummary(summary, totals) {
     if (!summary || !summary.length) { deltaSummaryEl.style.display = 'none'; return; }
     const cell = (v, cls) => '<td class="n' + (v ? (cls ? ' ' + cls : '') : ' zero') + '">' + v + '</td>';
+    const weight = s => s.added + s.updated + s.deleted + s.relAdded + s.relDeleted;
     const rows = summary
       .slice()
-      .sort((a, b) => (b.added + b.updated + b.deleted + b.relAdded + b.relDeleted) -
-                      (a.added + a.updated + a.deleted + a.relAdded + a.relDeleted))
+      .sort((a, b) => weight(b) - weight(a))
       .map(s => '<tr><td>' + s.table + '</td>' + cell(s.added) + cell(s.updated) +
-                cell(s.deleted, 'del') + cell(s.relAdded) + cell(s.relDeleted, 'del') + '</tr>')
+                cell(s.deleted, 'del') + cell(s.relAdded) + cell(s.relDeleted, 'del') +
+                cell(s.carried) + '</tr>')
       .join('');
     deltaSummaryEl.innerHTML =
       '<table><thead><tr><th>Reference table</th><th>Added</th><th>Updated</th>' +
-      '<th>Deleted</th><th>Rel +</th><th>Rel &minus;</th></tr></thead><tbody>' + rows +
+      '<th>Deleted</th><th>Rel +</th><th>Rel &minus;</th>' +
+      '<th title="Unchanged values re-stated so their relationship rows resolve">Carried</th>' +
+      '</tr></thead><tbody>' + rows +
       '</tbody><tfoot><tr><td>' + summary.length + ' table(s)</td>' +
       cell(totals.added) + cell(totals.updated) + cell(totals.deleted, 'del') +
-      cell(totals.relAdded) + cell(totals.relDeleted, 'del') + '</tr></tfoot></table>';
+      cell(totals.relAdded) + cell(totals.relDeleted, 'del') + cell(totals.carried) +
+      '</tr></tfoot></table>';
     deltaSummaryEl.style.display = 'block';
   }
 
@@ -206,10 +210,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const totals = summary.reduce((a, s) => ({
           added:      a.added      + s.added,
           updated:    a.updated    + s.updated,
+          carried:    a.carried    + s.carried,
           deleted:    a.deleted    + s.deleted,
           relAdded:   a.relAdded   + s.relAdded,
           relDeleted: a.relDeleted + s.relDeleted,
-        }), { added: 0, updated: 0, deleted: 0, relAdded: 0, relDeleted: 0 });
+        }), { added: 0, updated: 0, carried: 0, deleted: 0, relAdded: 0, relDeleted: 0 });
 
         console.table(summary);
         showDeltaSummary(summary, totals);

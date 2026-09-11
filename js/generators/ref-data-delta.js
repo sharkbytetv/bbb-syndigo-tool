@@ -308,9 +308,13 @@ async function generateRefDataDelta(data, modelWb) {
     const deletedNames = new Set();
     const liveValueIds = {};   // valueLower → { id, name } for relationship rows
 
+    // id → value, so a relationship row can always be backed by an Entities row
+    const valueById = {};
+
     // Matched values keep their UUID; re-state them when Name or Code drifted from the DD
     for (const p of pairs) {
       liveValueIds[lower(p.value.value)] = { id: p.entity.uuid, name: p.value.value };
+      valueById[String(p.entity.uuid)] = { id: p.entity.uuid, name: p.value.value, code: p.value.code };
       const nameDrift = norm(p.entity.name) !== norm(p.value.value);
       const codeDrift = norm(p.entity.code) !== norm(p.value.code || '');
       if (nameDrift || codeDrift) {
@@ -325,6 +329,7 @@ async function generateRefDataDelta(data, modelWb) {
       if (matchedDd.has(v)) continue;
       addRows.push(['', typeName, seq, v.value, v.code || null, null, null, null, null, null, v.value]);
       liveValueIds[lower(v.value)] = { id: seq, name: v.value };
+      valueById[String(seq)] = { id: seq, name: v.value, code: v.code };
       seq++;
     }
 
@@ -344,8 +349,29 @@ async function generateRefDataDelta(data, modelWb) {
       tableName: typeName, modelRels, ddView, deletedNames, liveValueIds, validL4Ids, nameMap, warnings,
     });
 
-    const entityRows = addRows.concat(updRows, delRows);
-    const relRows    = rel.addRows.concat(rel.delRows);
+    const relRows = rel.addRows.concat(rel.delRows);
+
+    // Syndigo resolves a relationship's owner from the Entities sheet, so every value a
+    // relationship row touches has to appear there. Values that are otherwise unchanged get
+    // a carrier row — blank Action, existing UUID, current name and code — which is a no-op
+    // on the value itself but gives the relationship something to attach to.
+    const carrierRows = [];
+    const emittedIds = new Set(addRows.concat(updRows, delRows).map(r => String(r[2])));
+    for (const r of relRows) {
+      const id = String(r[2] ?? '');
+      if (!id || emittedIds.has(id)) continue;
+      const v = valueById[id];
+      if (!v) {
+        warnings.push('[' + rt.name + '] relationship references value id "' + id +
+          '" with no matching Entities row — Syndigo will not resolve it.');
+        continue;
+      }
+      emittedIds.add(id);
+      carrierRows.push(['', typeName, v.id, v.name, v.code || null,
+                        null, null, null, null, null, v.name]);
+    }
+
+    const entityRows = addRows.concat(updRows, carrierRows, delRows);
 
     if (!entityRows.length && !relRows.length) continue;   // nothing to do for this table
 
@@ -360,6 +386,7 @@ async function generateRefDataDelta(data, modelWb) {
       table:      typeName,
       added:      addRows.length,
       updated:    updRows.length,
+      carried:    carrierRows.length,
       deleted:    delRows.length,
       relAdded:   rel.addRows.length,
       relDeleted: rel.delRows.length,
