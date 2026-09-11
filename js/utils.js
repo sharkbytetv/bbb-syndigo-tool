@@ -44,12 +44,14 @@ function refTableForAttr(fieldId, refTables) {
   return refTables.find(r => r.name.replace(/^ref/, '').toLowerCase() === suffix) ?? null;
 }
 
+// Plain SheetJS sheet builder. No generator uses it any more — every output
+// (010/040/060/080/delta) is written through the JSZip helpers below.
 function buildAOASheet(wb, sheetName, rows) {
   const ws = XLSX.utils.aoa_to_sheet(rows);
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
 }
 
-// ─── JSZip helpers ────────────────────────────────────────────────────────────
+// ─── JSZip helpers (used by 010 / 040 / 060 generators) ───────────────────────
 
 function _escXml(v) {
   return String(v)
@@ -111,9 +113,11 @@ async function _findSheetPath(zip, sheetName) {
   const sm  = new RegExp('name="' + esc + '"[^>]*r:id="([^"]+)"').exec(wbXml)
            || new RegExp('r:id="([^"]+)"[^>]*name="' + esc + '"').exec(wbXml);
   if (!sm) throw new Error('Sheet not found in workbook: ' + sheetName);
-  const rm = new RegExp('Id="' + sm[1] + '"[^>]*Target="([^"]+)"').exec(relsXml);
+  // Attribute order varies by writer, and some emit absolute targets ("/xl/worksheets/…")
+  const rm = new RegExp('Id="' + sm[1] + '"[^>]*Target="([^"]+)"').exec(relsXml)
+          || new RegExp('Target="([^"]+)"[^>]*Id="' + sm[1] + '"').exec(relsXml);
   if (!rm) throw new Error('Relationship not found for sheet: ' + sheetName);
-  const target = rm[1];
+  const target = rm[1].replace(/^\//, '');
   return target.startsWith('xl/') ? target : 'xl/' + target;
 }
 
@@ -160,7 +164,9 @@ async function fillSheet(zip, sheetName, dataRows, headerCount = 1) {
     if (cellsXml) newRowsXml += '<row r="' + rowNum + '">' + cellsXml + '</row>';
   }
 
-  // Use a function so any $ in headersXml/newRowsXml is treated literally
+  // Swap out the sheetData block entirely.
+  // Use a function so that any $ in headersXml/newRowsXml is treated literally
+  // ($ is special in String.replace replacement strings: $& = whole match, etc.)
   const newSd = '<sheetData>' + headersXml + newRowsXml + '</sheetData>';
   xml = xml.replace(/<sheetData\b[^>]*>[\s\S]*?<\/sheetData>/, () => newSd);
   xml = _updateDimension(xml, newSd);
@@ -168,7 +174,8 @@ async function fillSheet(zip, sheetName, dataRows, headerCount = 1) {
   zip.file(sheetPath, xml);
 }
 
-// Update TENANT and DOMAIN cells in the METADATA sheet via shared-string lookup.
+// Update TENANT (domain arg) and DOMAIN cells in the METADATA sheet via shared-string lookup.
+// Uses inlineStr to avoid having to extend the shared strings table.
 async function updateMetadata(zip, tenant, domain) {
   const sheetPath = await _findSheetPath(zip, 'METADATA');
 
@@ -176,6 +183,7 @@ async function updateMetadata(zip, tenant, domain) {
   if (!ssFile) return;
   const ssXml = await ssFile.async('string');
 
+  // Build a flat array of shared string values (index = position in file)
   const ssArr = [];
   const siRe = /<si\b[^>]*>([\s\S]*?)<\/si>/g;
   let siM;
@@ -194,6 +202,7 @@ async function updateMetadata(zip, tenant, domain) {
     if (idx < 0) continue;
 
     xml = xml.replace(/<row\b([^>]*)>([\s\S]*?)<\/row>/g, (fullRow, attrs, content) => {
+      // Only process rows whose A-column cell holds this shared string index
       if (!new RegExp('<c r="A\\d+"[^>]*t="s"[^>]*><v>' + idx + '<\\/v><\\/c>').test(content)) {
         return fullRow;
       }
@@ -201,6 +210,7 @@ async function updateMetadata(zip, tenant, domain) {
       if (!rnM) return fullRow;
       const rowNum = rnM[1];
 
+      // Find existing B-column cell and steal its style attribute
       const existingBM = new RegExp('<c r="B' + rowNum + '"([^>]*)>[\\s\\S]*?<\\/c>').exec(content);
       let sAttr = '';
       if (existingBM) {
@@ -209,6 +219,7 @@ async function updateMetadata(zip, tenant, domain) {
       }
 
       const newBCell = '<c r="B' + rowNum + '"' + sAttr + ' t="inlineStr"><is><t>' + _escXml(value) + '</t></is></c>';
+      // Use a function so $ in newBCell is treated literally
       const newContent = existingBM
         ? content.replace(existingBM[0], () => newBCell)
         : content + newBCell;
@@ -219,3 +230,4 @@ async function updateMetadata(zip, tenant, domain) {
 
   zip.file(sheetPath, xml);
 }
+
