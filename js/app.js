@@ -18,6 +18,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const statusEl = document.getElementById('status');
   const summaryEl = document.getElementById('summary');
 
+  const badge = document.getElementById('version-badge');
+  if (badge && typeof APP_VERSION !== 'undefined') {
+    badge.textContent = 'v' + APP_VERSION + ' · ' + APP_BUILT;
+    document.title = 'Syndigo Model Generator v' + APP_VERSION;
+  }
+
   // Restore cached values
   ['tenantInput', 'taxNameInput', 'taxDisplayInput'].forEach(id => {
     const saved = localStorage.getItem('syndigo_' + id);

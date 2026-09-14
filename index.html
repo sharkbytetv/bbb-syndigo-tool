@@ -48,11 +48,14 @@
   button:disabled { background: #aab8d8; cursor: not-allowed; }
   .note { font-size: 12px; color: #888; margin-top: 20px; line-height: 1.6; border-top: 1px solid #eee; padding-top: 16px; }
   .note strong { color: #555; }
+  .version-badge { font-size: 12px; font-weight: 500; color: #666; background: #eef1f6;
+    border: 1px solid #d8dee9; border-radius: 10px; padding: 2px 9px; margin-left: 10px;
+    vertical-align: middle; letter-spacing: .2px; white-space: nowrap; }
 </style>
 </head>
 <body>
 <div class="card">
-  <h1>Syndigo Model Generator</h1>
+  <h1>Syndigo Model Generator <span class="version-badge" id="version-badge"></span></h1>
   <p class="subtitle">Upload a Data Dictionary to generate all Syndigo DMD import files.</p>
 
   <label for="tenantInput">Syndigo Tenant Name</label>
@@ -105,14 +108,25 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-<script src="js/utils.js"></script>
-<script src="js/parser.js"></script>
-<script src="js/generators/thing-model.js"></script>
-<script src="js/generators/ref-model.js"></script>
-<script src="js/generators/taxonomy-model.js"></script>
-<script src="js/generators/ref-data.js"></script>
-<script src="js/generators/ref-data-delta.js"></script>
-<script src="js/app.js"></script>
+<script>
+  // Bump on every change that gets pushed. Shown next to the page title, and appended to each
+  // script URL so a browser cannot serve a stale mix of old and new files.
+  var APP_VERSION = "1.1.0";
+  var APP_BUILT   = "2026-09-14";
+
+  document.write([
+    'js/utils.js',
+    'js/parser.js',
+    'js/generators/thing-model.js',
+    'js/generators/ref-model.js',
+    'js/generators/taxonomy-model.js',
+    'js/generators/ref-data.js',
+    'js/generators/ref-data-delta.js',
+    'js/app.js',
+  ].map(function (f) {
+    return '<scr' + 'ipt src="' + f + '?v=' + APP_VERSION + '"><\/scr' + 'ipt>';
+  }).join(''));
+</script>
 </body>
 </html>
 
