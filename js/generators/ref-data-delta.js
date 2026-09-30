@@ -234,11 +234,16 @@ function buildRelationshipDelta(opts) {
 }
 
 // Generates one XLSM per CHANGED ref table. Returns { files, warnings, summary }.
-async function generateRefDataDelta(data, modelWb) {
+async function generateRefDataDelta(data, modelWb, combine) {
   const model = parseCurrentModel(modelWb);
   const warnings = model.warnings.slice();
-  const results = [];
+  const groups = [];
   const summary = [];
+
+  // Placeholder ids only have to be unique within the file they land in. Split output
+  // restarts at 1 per table; combined output keeps counting, so two tables' new values
+  // can never share an id in the same sheet.
+  let seq = 1;
 
   // The DD's L4 node ID space — used to resolve which node each existing relationship targets
   const validL4Ids = new Set();
@@ -324,7 +329,7 @@ async function generateRefDataDelta(data, modelWb) {
     }
 
     // New values get sequence placeholders, matching the full-import generator's convention
-    let seq = 1;
+    if (!combine) seq = 1;
     for (const v of rt.values) {
       if (matchedDd.has(v)) continue;
       addRows.push(['', typeName, seq, v.value, v.code || null, null, null, null, null, null, v.value]);
@@ -375,13 +380,10 @@ async function generateRefDataDelta(data, modelWb) {
 
     if (!entityRows.length && !relRows.length) continue;   // nothing to do for this table
 
-    const zip = await loadTemplate('templates/ref-data-template.xlsm');
-    await fillSheet(zip, 'Entities',       entityRows, 2);
-    await fillSheet(zip, 'Relationships',  relRows,    2);
-    await fillSheet(zip, 'Reference Data', [[typeName + REL_SUFFIX, typeName]], 1);
-
-    const buf = await zip.generateAsync({ type: 'uint8array' });
-    results.push({ name: rt.name, displayName: rt.displayName, buf });
+    groups.push({
+      name: rt.name, displayName: rt.displayName, typeName,
+      relType: typeName + REL_SUFFIX, entityRows, relRows,
+    });
     summary.push({
       table:      typeName,
       added:      addRows.length,
@@ -393,6 +395,7 @@ async function generateRefDataDelta(data, modelWb) {
     });
   }
 
-  return { files: results, warnings, summary };
+  const files = await writeRefDataWorkbooks(groups, combine);
+  return { files, warnings, summary, changedTables: groups.length };
 }
 

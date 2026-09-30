@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const dropzone = document.getElementById('dropzone');
   const fileInput = document.getElementById('fileInput');
   const deltaToggle = document.getElementById('deltaToggle');
+  const singleFileToggle = document.getElementById('singleFileToggle');
   const deltaPanel = document.getElementById('deltaPanel');
   const modelDropzone = document.getElementById('modelDropzone');
   const modelFileInput = document.getElementById('modelFileInput');
@@ -47,6 +48,11 @@ document.addEventListener('DOMContentLoaded', () => {
   generateBtn.addEventListener('click', generate);
 
   // Delta mode — restore preference, toggle the panel
+  singleFileToggle.checked = localStorage.getItem('syndigo_singleFile') === '1';
+  singleFileToggle.addEventListener('change', () => {
+    localStorage.setItem('syndigo_singleFile', singleFileToggle.checked ? '1' : '0');
+  });
+
   deltaToggle.checked = localStorage.getItem('syndigo_deltaMode') === '1';
   deltaPanel.style.display = deltaToggle.checked ? 'block' : 'none';
   deltaToggle.addEventListener('change', () => {
@@ -175,6 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!taxName) { setStatus('Please enter a Taxonomy Short Name.', 'error'); return; }
 
     const deltaMode = deltaToggle.checked;
+    const singleFile = singleFileToggle.checked;
     if (deltaMode && !modelWorkbook) {
       setStatus('Delta mode needs a current model export — upload one or switch delta mode off.', 'error');
       return;
@@ -196,8 +203,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (deltaMode) {
         setStatus('Comparing current model against the Data Dictionary…', 'info');
         await tick();
-        const { files: deltaFiles, warnings: deltaWarnings, summary } =
-          await generateRefDataDelta(data, modelWorkbook);
+        const { files: deltaFiles, warnings: deltaWarnings, summary, changedTables } =
+          await generateRefDataDelta(data, modelWorkbook, singleFile);
 
         showWarnings(deltaWarnings);
         deltaWarnings.forEach(w => console.warn('[ref-delta]', w));
@@ -206,11 +213,6 @@ document.addEventListener('DOMContentLoaded', () => {
           setStatus('No differences found — the model already matches the Data Dictionary.', 'success');
           generateBtn.disabled = false;
           return;
-        }
-
-        for (const { displayName, buf } of deltaFiles) {
-          const safeName = displayName.replace(/[\/\\:*?"<>|]/g, '').trim();
-          zip.file('080-delta-' + safeName + '.xlsm', buf);
         }
 
         const totals = summary.reduce((a, s) => ({
@@ -225,12 +227,23 @@ document.addEventListener('DOMContentLoaded', () => {
         console.table(summary);
         showDeltaSummary(summary, totals);
 
-        setStatus('Packaging zip…', 'info');
-        await tick();
-        const deltaBlob = await zip.generateAsync({ type: 'blob' });
-        saveAs(deltaBlob, `syndigo-refdata-delta-${tenant}-${today()}.zip`);
+        // A single combined workbook is downloaded as-is; zipping one file helps nobody.
+        if (singleFile) {
+          setStatus('Writing workbook…', 'info');
+          await tick();
+          saveAs(new Blob([deltaFiles[0].buf]), `080-delta-all-reference-tables-${tenant}-${today()}.xlsm`);
+        } else {
+          for (const { displayName, buf } of deltaFiles) {
+            const safeName = displayName.replace(/[\/\\:*?"<>|]/g, '').trim();
+            zip.file('080-delta-' + safeName + '.xlsm', buf);
+          }
+          setStatus('Packaging zip…', 'info');
+          await tick();
+          const deltaBlob = await zip.generateAsync({ type: 'blob' });
+          saveAs(deltaBlob, `syndigo-refdata-delta-${tenant}-${today()}.zip`);
+        }
 
-        let msg = 'Delta ready — ' + deltaFiles.length + ' table(s) changed: ' +
+        let msg = 'Delta ready — ' + changedTables + ' table(s) changed: ' +
                   totals.added + ' value(s) added, ' + totals.updated + ' updated, ' +
                   totals.deleted + ' deleted, ' + totals.relAdded + ' relationship(s) added, ' +
                   totals.relDeleted + ' removed.';
@@ -258,9 +271,11 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('[060] type:', Object.prototype.toString.call(taxBuf), 'len:', taxBuf && taxBuf.length);
       zip.file('060-taxonomy-model.xlsx', taxBuf);
 
-      setStatus('Generating 080 — reference data files (one per table)…', 'info');
+      setStatus(singleFile
+        ? 'Generating 080 — reference data (single file)…'
+        : 'Generating 080 — reference data files (one per table)…', 'info');
       await tick();
-      const { files: refFiles, warnings: refWarnings } = await generateRefDataFiles(data);
+      const { files: refFiles, warnings: refWarnings } = await generateRefDataFiles(data, singleFile);
       for (const { displayName, buf: refBuf } of refFiles) {
         const safeName = displayName.replace(/[\/\\:*?"<>|]/g, '').trim();
         zip.file('080-' + safeName + '.xlsm', refBuf);
@@ -273,7 +288,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const blob = await zip.generateAsync({ type: 'blob' });
       saveAs(blob, `syndigo-model-${tenant}-${today()}.zip`);
 
-      var doneMsg = 'Done! Generated ' + refFiles.length + ' reference table file(s).';
+      var tableCount = refFiles.reduce((a, f) => a + (f.tables || 1), 0);
+      var doneMsg = singleFile
+        ? 'Done! ' + tableCount + ' reference table(s) in a single file.'
+        : 'Done! Generated ' + refFiles.length + ' reference table file(s).';
       if (refWarnings.length) doneMsg += ' ' + refWarnings.length + ' blank LOV warning(s) — see browser console.';
       setStatus(doneMsg, 'success');
     } catch (err) {

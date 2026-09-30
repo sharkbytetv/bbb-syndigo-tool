@@ -1,6 +1,7 @@
-// Generates one XLSM per ref table, each containing Entities + Relationships.
-// Returns { files: [{ name, displayName, buf }], warnings }.
-async function generateRefDataFiles(data) {
+// Generates the reference-data files, each containing Entities + Relationships.
+// `combine` emits a single workbook covering every table instead of one file per table.
+// Returns { files: [{ name, displayName, buf, tables }], warnings }.
+async function generateRefDataFiles(data, combine) {
   // Build map from CSA specific-LOV rows: refTable → { valueLower → [l4Code, ...] }
   // fullLov rows (Syndigo implicit) and blank rows (warned below) do not create relationships.
   const tableValueToL4s = {};
@@ -29,16 +30,20 @@ async function generateRefDataFiles(data) {
     }
   }
 
-  const results = [];
+  const groups = [];
+
+  // Placeholder ids only have to be unique within the file they land in. Split output
+  // restarts at 1 per table; combined output keeps counting, so two tables' new values
+  // can never share an id in the same sheet.
+  let seq = 1;
 
   for (const rt of data.refTables) {
-    const zip = await loadTemplate('templates/ref-data-template.xlsm');
+    if (!combine) seq = 1;
     const relType = rt.name + '@@Belongs to Product Type';
 
-    // Entities: assign 1-based sequence IDs
+    // Entities: assign sequence IDs
     const entityRows = [];
     const valueToSeq = {};
-    let seq = 1;
     for (const v of rt.values) {
       const key = v.value.toLowerCase();
       valueToSeq[key] = seq;
@@ -61,19 +66,12 @@ async function generateRefDataFiles(data) {
       }
     }
 
-    const refDataRows = [
-      [rt.name + '@@Belongs to Product Type', rt.name]
-    ];
-
-    // Template has 2 header rows (section + column headers); data starts at row 3
-    await fillSheet(zip, 'Entities',       entityRows,   2);
-    await fillSheet(zip, 'Relationships',  relRows,      2);
-    await fillSheet(zip, 'Reference Data', refDataRows,  1);
-
-    const buf = await zip.generateAsync({ type: 'uint8array' });
-    results.push({ name: rt.name, displayName: rt.displayName, buf });
+    groups.push({
+      name: rt.name, displayName: rt.displayName, typeName: rt.name,
+      relType, entityRows, relRows,
+    });
   }
 
-  return { files: results, warnings };
+  const files = await writeRefDataWorkbooks(groups, combine);
+  return { files, warnings };
 }
-

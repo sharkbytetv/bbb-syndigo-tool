@@ -129,6 +129,48 @@ async function loadTemplate(path) {
   return JSZip.loadAsync(buf);
 }
 
+// Turn per-table row groups into workbooks: one file per table, or a single file holding
+// every table's rows. Returns [{ name, displayName, buf, tables }].
+// Every group given is emitted — callers decide what belongs here, and the delta generator
+// already drops unchanged tables before calling. Combining is only safe because the callers
+// make placeholder ids unique across tables when `combine` is set — see the `seq` handling
+// in the two ref-data generators.
+async function writeRefDataWorkbooks(groups, combine) {
+  if (!groups.length) return [];
+
+  if (!combine) {
+    const out = [];
+    for (const g of groups) {
+      const zip = await loadTemplate('templates/ref-data-template.xlsm');
+      await fillSheet(zip, 'Entities',       g.entityRows, 2);
+      await fillSheet(zip, 'Relationships',  g.relRows,    2);
+      await fillSheet(zip, 'Reference Data', [[g.relType, g.typeName]], 1);
+      out.push({
+        name: g.name, displayName: g.displayName, tables: 1,
+        buf: await zip.generateAsync({ type: 'uint8array' }),
+      });
+    }
+    return out;
+  }
+
+  const zip = await loadTemplate('templates/ref-data-template.xlsm');
+  const entityRows = [], relRows = [], refDataRows = [];
+  for (const g of groups) {
+    entityRows.push(...g.entityRows);
+    relRows.push(...g.relRows);
+    refDataRows.push([g.relType, g.typeName]);
+  }
+  await fillSheet(zip, 'Entities',       entityRows,  2);
+  await fillSheet(zip, 'Relationships',  relRows,     2);
+  await fillSheet(zip, 'Reference Data', refDataRows, 1);
+  return [{
+    name: 'all-reference-tables',
+    displayName: 'all reference tables',
+    tables: groups.length,
+    buf: await zip.generateAsync({ type: 'uint8array' }),
+  }];
+}
+
 // Replace the <sheetData> of `sheetName` with new rows, preserving styled header rows.
 // headerCount: how many header rows to keep from the template (default 1).
 // dataRows: array of arrays; null/undefined cells are omitted; numbers written as <v>; all else as inlineStr.

@@ -81,6 +81,11 @@
     <span>Delta mode &mdash; only new values, plus <code>DELETE</code> rows for values no longer in the DD</span>
   </label>
 
+  <label class="toggle-row" for="singleFileToggle">
+    <input type="checkbox" id="singleFileToggle">
+    <span>Single file &mdash; combine every reference table into one workbook, instead of one file per table</span>
+  </label>
+
   <div id="deltaPanel" style="display:none">
     <label>Current Model Export <span class="hint">(one file containing all reference tables)</span></label>
     <div class="dropzone" id="modelDropzone">
@@ -111,8 +116,8 @@
 <script>
   // Bump on every change that gets pushed. Shown next to the page title, and appended to each
   // script URL so a browser cannot serve a stale mix of old and new files.
-  var APP_VERSION = "1.1.0";
-  var APP_BUILT   = "2026-09-14";
+  var APP_VERSION = "1.2.2";
+  var APP_BUILT   = "2026-09-29";
 
   document.write([
     'js/utils.js',
