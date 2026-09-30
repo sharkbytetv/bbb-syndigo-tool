@@ -145,26 +145,31 @@ function parseCurrentModel(wb) {
 
 // Per ref table, work out which L4 nodes the DD constrains and which it opens up.
 //   specificNodes → node has an explicit LOV list; relationships should mirror it exactly
-//   fullLovNodes  → node is "full LOV"; ALL existing relationships must go, since the
+//   fullLovNodes  → node is unrestricted; ALL existing relationships must go, since the
 //                   absence of relationships is what signals "unrestricted" to Syndigo
 //   desiredRels   → set of "valueLower|l4Code" the DD wants to exist
+//
+// A blank LOV cell and "Full LOV for Ref Table" mean the same thing — the node takes every
+// value in the table. Which one a row uses is an inconsistency in how the CSA was filled in,
+// not a distinction, so both are treated as unrestricted.
 function buildDdRelationshipView(categoryAttrs, tableName) {
   const specificNodes = new Set();
   const fullLovNodes  = new Set();
-  const blankNodes    = new Set();
   const desiredRels   = new Set();
 
   const want = lower(tableName);
   for (const ca of categoryAttrs) {
     if (lower(ca.refTable) !== want || !ca.l4NodeId) continue;
-    if (ca.fullLov) { fullLovNodes.add(ca.l4NodeId); continue; }
-    if (!ca.lovValues || ca.lovValues.length === 0) { blankNodes.add(ca.l4NodeId); continue; }
+    if (ca.fullLov || !ca.lovValues || ca.lovValues.length === 0) {
+      fullLovNodes.add(ca.l4NodeId);
+      continue;
+    }
     specificNodes.add(ca.l4NodeId);
     for (const v of ca.lovValues) desiredRels.add(lower(v) + '|' + ca.l4NodeId);
   }
-  // A node listed as full LOV anywhere wins — it is unrestricted regardless of other rows.
+  // A node that is unrestricted anywhere wins — it stays so regardless of other rows.
   for (const n of fullLovNodes) specificNodes.delete(n);
-  return { specificNodes, fullLovNodes, blankNodes, desiredRels };
+  return { specificNodes, fullLovNodes, desiredRels };
 }
 
 // The L4 node a relationship targets lives in the Code column, matching what the full-import

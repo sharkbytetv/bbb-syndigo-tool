@@ -14,7 +14,8 @@ async function generateRefDataFiles(data, combine) {
       const warnKey = ca.refTable + '|' + ca.attrDisplayName;
       if (!blankWarnSeen.has(warnKey)) {
         blankWarnSeen.add(warnKey);
-        warnings.push('Blank LOV in CSA for "' + ca.attrDisplayName + '" (' + ca.refTable + ') — no relationships created for these rows.');
+        warnings.push('Blank LOV in CSA for "' + ca.attrDisplayName + '" (' + ca.refTable +
+          ') — treated as full LOV, so no relationships are created. Write "Full LOV for Ref Table" to make that explicit.');
       }
       continue;
     }
