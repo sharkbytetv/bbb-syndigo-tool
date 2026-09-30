@@ -82,7 +82,9 @@ function resolveSheet(rows, required, kind, sheetName, warnings) {
 }
 
 const norm = v => (v === null || v === undefined) ? '' : String(v).trim();
-const lower = v => norm(v).toLowerCase();
+// Every comparison key in this file goes through matchKey, so a smart quote or en-dash on one
+// side and a plain one on the other still match. Output rows carry the original text.
+const lower = v => matchKey(norm(v));
 
 // Parse the combined export into per-table entity and relationship maps.
 function parseCurrentModel(wb) {

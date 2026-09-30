@@ -21,11 +21,11 @@ async function generateRefDataFiles(data, combine) {
     }
     // Keyed lower-case: the CSA tab and the Reference LOV Master drift in casing
     // (refSize vs refsize), and an exact match silently yields no relationships.
-    const tableKey = ca.refTable.toLowerCase();
+    const tableKey = matchKey(ca.refTable);
     if (!tableValueToL4s[tableKey]) tableValueToL4s[tableKey] = {};
     const byVal = tableValueToL4s[tableKey];
     for (const val of ca.lovValues) {
-      const key = val.toLowerCase();
+      const key = matchKey(val);
       if (!byVal[key]) byVal[key] = [];
       if (!byVal[key].includes(ca.l4NodeId)) byVal[key].push(ca.l4NodeId);
     }
@@ -46,7 +46,7 @@ async function generateRefDataFiles(data, combine) {
     const entityRows = [];
     const valueToSeq = {};
     for (const v of rt.values) {
-      const key = v.value.toLowerCase();
+      const key = matchKey(v.value);
       valueToSeq[key] = seq;
       entityRows.push(['', rt.name, seq, v.value, v.code ?? '', null, null, null, null, null, v.value]);
       seq++;
@@ -55,9 +55,9 @@ async function generateRefDataFiles(data, combine) {
     // Relationships: one row per (entity, l4Code) pair — specific LOV rows only
     const relRows = [];
     const seen = new Set();
-    const byVal = tableValueToL4s[rt.name.toLowerCase()] || {};
+    const byVal = tableValueToL4s[matchKey(rt.name)] || {};
     for (const v of rt.values) {
-      const key = v.value.toLowerCase();
+      const key = matchKey(v.value);
       const id = valueToSeq[key];
       for (const l4Code of (byVal[key] || [])) {
         const dedupKey = id + '|' + l4Code;

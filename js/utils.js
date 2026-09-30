@@ -1,5 +1,28 @@
 const BOOL_MAP = { Y: 'Yes', N: 'No', Yes: 'Yes', No: 'No', TRUE: 'Yes', FALSE: 'No', true: 'Yes', false: 'No' };
 
+// Characters Excel and Word substitute silently as you type: straight quotes become curly,
+// hyphens become en-dashes, ordinary spaces become non-breaking ones. Two strings that differ
+// only by these look identical in the sheet but never compare equal, so a CSA value can name a
+// reference value that plainly exists and still be skipped. Normalise them for MATCHING only —
+// the original text is still what gets written to the output.
+const SMART_PUNCT = {
+  '\u201c': '"', '\u201d': '"', '\u201e': '"', '\u00ab': '"', '\u00bb': '"', '\u2033': '"',
+  '\u2018': "'", '\u2019': "'", '\u201a': "'", '\u2032': "'",
+  '\u2013': '-', '\u2014': '-', '\u2212': '-', '\u2010': '-', '\u2011': '-',
+  '\u00a0': ' ', '\u2007': ' ', '\u202f': ' ', '\u200b': '',
+};
+
+function matchKey(value) {
+  if (value === null || value === undefined) return '';
+  let out = '';
+  const s = String(value);
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    out += (SMART_PUNCT[c] !== undefined) ? SMART_PUNCT[c] : c;
+  }
+  return out.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
 function normalizeBoolean(val) {
   if (val === null || val === undefined || val === '') return 'No';
   return BOOL_MAP[String(val).trim()] ?? 'No';
